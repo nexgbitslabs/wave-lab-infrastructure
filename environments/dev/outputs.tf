@@ -86,3 +86,17 @@ output "aks_oidc_issuer_url" {
   description = "AKS OIDC issuer URL."
   value       = module.aks.oidc_issuer_url
 }
+
+# ============================================================
+# Flux / GitOps
+# ============================================================
+
+output "flux_extension_id" {
+  description = "Flux v2 AKS extension resource ID."
+  value       = module.flux.extension_id
+}
+
+output "flux_configuration_id" {
+  description = "Flux GitOps configuration resource ID."
+  value       = module.flux.configuration_id
+}

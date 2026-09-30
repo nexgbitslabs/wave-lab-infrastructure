@@ -105,3 +105,24 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ============================================================
+# Flux / GitOps
+# ============================================================
+
+variable "flux_git_repository_url" {
+  description = "Git repository used by Flux for GitOps reconciliation."
+  type        = string
+}
+
+variable "flux_git_branch" {
+  description = "Git branch used by Flux."
+  type        = string
+  default     = "main"
+}
+
+variable "flux_git_path" {
+  description = "Path within the GitOps repository reconciled by Flux."
+  type        = string
+  default     = "clusters/dev"
+}
