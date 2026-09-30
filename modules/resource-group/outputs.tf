@@ -9,6 +9,6 @@ output "name" {
 }
 
 output "location" {
-  description = "Resource Group Azure region."
+  description = "Resource Group location."
   value       = azurerm_resource_group.this.location
 }

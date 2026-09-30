@@ -52,28 +52,60 @@ pipeline {
         // Load environment-specific Jenkins properties
         // =====================================================
 
+                // =====================================================
+        // Load environment-specific Jenkins properties
+        // =====================================================
+
         stage('Load Environment Properties') {
             steps {
                 script {
-                    if (env.DEPLOYMENT_ENVIRONMENT != params.ENVIRONMENT) {
-                        error(
-                            "Environment mismatch: Jenkins selected '${params.ENVIRONMENT}' " +
-                            "but properties file declares '${env.DEPLOYMENT_ENVIRONMENT}'."
-                        )
-                    }
-
-                    echo "Environment loaded: ${env.DEPLOYMENT_ENVIRONMENT}"
 
                     def propertiesFile =
                         "Jenkins/properties/${params.ENVIRONMENT}.properties"
 
                     echo "Loading properties: ${propertiesFile}"
 
+                    if (!fileExists(propertiesFile)) {
+                        error(
+                            "Environment properties file not found: ${propertiesFile}"
+                        )
+                    }
+
+                    // -------------------------------------------------
+                    // Load properties FIRST
+                    // -------------------------------------------------
+
                     def props = readProperties file: propertiesFile
 
-                    env.AZURE_LOCATION = props.AZURE_LOCATION
-                    env.PROJECT_NAME = props.PROJECT_NAME
-                    env.DEPLOYMENT_ENVIRONMENT = props.ENVIRONMENT
+                    if (!props.ENVIRONMENT) {
+                        error(
+                            "ENVIRONMENT is not defined in ${propertiesFile}"
+                        )
+                    }
+
+                    // -------------------------------------------------
+                    // Validate selected environment
+                    // -------------------------------------------------
+
+                    if (props.ENVIRONMENT != params.ENVIRONMENT) {
+                        error(
+                            "Environment mismatch: Jenkins selected '${params.ENVIRONMENT}' " +
+                            "but properties file declares '${props.ENVIRONMENT}'."
+                        )
+                    }
+
+                    // -------------------------------------------------
+                    // Populate Jenkins environment
+                    // -------------------------------------------------
+
+                    env.AZURE_LOCATION =
+                        props.AZURE_LOCATION
+
+                    env.PROJECT_NAME =
+                        props.PROJECT_NAME
+
+                    env.DEPLOYMENT_ENVIRONMENT =
+                        props.ENVIRONMENT
 
                     env.VNET_ADDRESS_SPACE =
                         props.VNET_ADDRESS_SPACE
@@ -101,6 +133,10 @@ pipeline {
 
                     env.KEY_VAULT_SKU =
                         props.KEY_VAULT_SKU
+
+                    echo "Environment loaded: ${env.DEPLOYMENT_ENVIRONMENT}"
+                    echo "Azure location:     ${env.AZURE_LOCATION}"
+                    echo "Project:            ${env.PROJECT_NAME}"
                 }
             }
         }
@@ -254,19 +290,71 @@ pipeline {
                 '''
             }
         }
+
+                // =====================================================
+        // Terraform Format and Validation
+        // =====================================================
+
+        stage('Terraform Validate') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "========================================"
+                    echo "Terraform Validation"
+                    echo "========================================"
+
+                    ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
+
+                    echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                    echo "Directory:   ${ENV_DIR}"
+
+                    test -d "$ENV_DIR"
+
+                    echo ""
+                    echo "Checking Terraform formatting..."
+
+                    terraform fmt -check -recursive
+
+                    echo ""
+                    echo "Initializing Terraform without backend..."
+
+                    terraform \
+                      -chdir="$ENV_DIR" \
+                      init \
+                      -backend=false
+
+                    echo ""
+                    echo "Validating Terraform configuration..."
+
+                    terraform \
+                      -chdir="$ENV_DIR" \
+                      validate
+
+                    echo ""
+                    echo "Terraform configuration is valid."
+                '''
+            }
+        }
     }
 
 
     post {
 
-        always {
+                always {
             sh '''
-                echo "Cleaning generated Terraform variable files..."
+                echo "Cleaning generated Terraform files..."
 
                 find environments \
                   -type f \
                   -name "*.generated.tfvars" \
                   -delete || true
+
+                find environments \
+                  -type d \
+                  -name ".terraform" \
+                  -prune \
+                  -exec rm -rf {} + || true
             '''
         }
 

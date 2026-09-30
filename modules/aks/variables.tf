@@ -109,3 +109,8 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "tenant_id" {
+  description = "Microsoft Entra tenant ID used by AKS."
+  type        = string
+}

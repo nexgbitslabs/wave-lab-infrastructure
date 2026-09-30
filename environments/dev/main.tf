@@ -107,6 +107,7 @@ module "aks" {
   environment         = var.environment
   location            = module.resource_group.location
   resource_group_name = module.resource_group.name
+  tenant_id           = var.tenant_id
 
   aks_subnet_id              = module.networking.aks_subnet_id
   log_analytics_workspace_id = module.log_analytics.id
