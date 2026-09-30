@@ -1,21 +1,36 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'qa', 'uat', 'prod'],
+            description: 'Environment to deploy'
+        )
+    }
+
+    environment {
+        TF_IN_AUTOMATION = 'true'
+        TF_INPUT         = 'false'
+    }
+
     stages {
 
-        stage('Environment') {
+        // =====================================================
+        // Verify Jenkins execution environment
+        // =====================================================
+
+        stage('Verify Tools') {
             steps {
                 sh '''
+                    set -e
+
                     echo "========================================"
                     echo "Jenkins Execution Environment"
                     echo "========================================"
 
                     echo "User:"
                     whoami
-
-                    echo ""
-                    echo "Hostname:"
-                    hostname
 
                     echo ""
                     echo "Git:"
@@ -32,29 +47,209 @@ pipeline {
             }
         }
 
-        stage('Repository Verification') {
+
+        // =====================================================
+        // Load environment-specific Jenkins properties
+        // =====================================================
+
+        stage('Load Environment Properties') {
+            steps {
+                script {
+
+                    def propertiesFile =
+                        "Jenkins/properties/${params.ENVIRONMENT}.properties"
+
+                    echo "Loading properties: ${propertiesFile}"
+
+                    def props = readProperties file: propertiesFile
+
+                    env.AZURE_LOCATION = props.AZURE_LOCATION
+                    env.PROJECT_NAME = props.PROJECT_NAME
+                    env.DEPLOYMENT_ENVIRONMENT = props.ENVIRONMENT
+
+                    env.VNET_ADDRESS_SPACE =
+                        props.VNET_ADDRESS_SPACE
+
+                    env.AKS_SUBNET_PREFIX =
+                        props.AKS_SUBNET_PREFIX
+
+                    env.PRIVATE_ENDPOINT_SUBNET_PREFIX =
+                        props.PRIVATE_ENDPOINT_SUBNET_PREFIX
+
+                    env.AKS_SYSTEM_NODE_VM_SIZE =
+                        props.AKS_SYSTEM_NODE_VM_SIZE
+
+                    env.AKS_SYSTEM_NODE_COUNT =
+                        props.AKS_SYSTEM_NODE_COUNT
+
+                    env.AKS_USER_NODE_VM_SIZE =
+                        props.AKS_USER_NODE_VM_SIZE
+
+                    env.AKS_USER_NODE_COUNT =
+                        props.AKS_USER_NODE_COUNT
+
+                    env.ACR_SKU =
+                        props.ACR_SKU
+
+                    env.KEY_VAULT_SKU =
+                        props.KEY_VAULT_SKU
+                }
+            }
+        }
+
+
+        // =====================================================
+        // Authenticate using Terraform SPN
+        // =====================================================
+
+        stage('Azure Authentication') {
+            steps {
+
+                withCredentials([
+
+                    string(
+                        credentialsId: 'azure-terraform-client-id',
+                        variable: 'ARM_CLIENT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-client-secret',
+                        variable: 'ARM_CLIENT_SECRET'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-tenant-id',
+                        variable: 'ARM_TENANT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-subscription-id',
+                        variable: 'ARM_SUBSCRIPTION_ID'
+                    )
+
+                ]) {
+
+                    sh '''
+                        set +x
+                        set -e
+
+                        echo "Authenticating Terraform SPN..."
+
+                        az login \
+                          --service-principal \
+                          --username "$ARM_CLIENT_ID" \
+                          --password "$ARM_CLIENT_SECRET" \
+                          --tenant "$ARM_TENANT_ID" \
+                          --output none
+
+                        az account set \
+                          --subscription "$ARM_SUBSCRIPTION_ID"
+
+                        echo "Azure authentication successful."
+
+                        az account show \
+                          --query "{Name:name, State:state}" \
+                          --output table
+                    '''
+                }
+            }
+        }
+
+
+        // =====================================================
+        // Render Terraform variables
+        // =====================================================
+
+        stage('Render Terraform Variables') {
+            steps {
+
+                withCredentials([
+
+                    string(
+                        credentialsId: 'azure-terraform-tenant-id',
+                        variable: 'ARM_TENANT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-subscription-id',
+                        variable: 'ARM_SUBSCRIPTION_ID'
+                    )
+
+                ]) {
+
+                    sh '''
+                        set +x
+                        set -e
+
+                        export AZURE_TENANT_ID="$ARM_TENANT_ID"
+                        export AZURE_SUBSCRIPTION_ID="$ARM_SUBSCRIPTION_ID"
+
+                        TEMPLATE="variable_templates/${ENVIRONMENT}.tfvars.tpl"
+
+                        OUTPUT="environments/${ENVIRONMENT}/${ENVIRONMENT}.generated.tfvars"
+
+                        echo "Rendering:"
+                        echo "$TEMPLATE"
+                        echo "to:"
+                        echo "$OUTPUT"
+
+                        envsubst < "$TEMPLATE" > "$OUTPUT"
+
+                        echo "Terraform variable file successfully generated."
+                    '''
+                }
+            }
+        }
+
+
+        // =====================================================
+        // Verify generated file exists
+        // =====================================================
+
+        stage('Verify Generated Configuration') {
             steps {
                 sh '''
-                    echo "========================================"
-                    echo "Repository"
-                    echo "========================================"
+                    set -e
 
-                    echo "Workspace:"
-                    pwd
+                    GENERATED_FILE="environments/${ENVIRONMENT}/${ENVIRONMENT}.generated.tfvars"
 
-                    echo ""
-                    echo "Repository contents:"
-                    ls -la
+                    test -f "$GENERATED_FILE"
 
-                    echo ""
-                    echo "Git branch:"
-                    git branch --show-current
+                    echo "Generated Terraform configuration exists."
 
-                    echo ""
-                    echo "Git commit:"
-                    git rev-parse HEAD
+                    # Check that no unresolved template placeholders remain.
+                    if grep -q '\\${' "$GENERATED_FILE"; then
+                        echo "ERROR: Unresolved variables found:"
+                        grep '\\${' "$GENERATED_FILE"
+                        exit 1
+                    fi
+
+                    echo "No unresolved template variables found."
                 '''
             }
+        }
+    }
+
+
+    post {
+
+        always {
+            sh '''
+                echo "Cleaning generated Terraform variable files..."
+
+                find environments \
+                  -type f \
+                  -name "*.generated.tfvars" \
+                  -delete || true
+            '''
+        }
+
+        success {
+            echo 'Jenkins validation pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'Jenkins validation pipeline failed.'
         }
     }
 }
