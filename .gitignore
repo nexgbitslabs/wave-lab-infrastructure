@@ -1,0 +1,312 @@
+# ============================================================
+# Wave Lab Infrastructure - Git Ignore
+# ============================================================
+# Repository:
+#   wave-lab-infrastructure
+#
+# Terraform is executed by Jenkins.
+# Secrets are stored in Jenkins Credentials.
+# Variable templates (*.tfvars.tpl) are committed.
+# Rendered variable files are NEVER committed.
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Terraform working directories
+# ------------------------------------------------------------
+
+**/.terraform/*
+**/.terraform/**
+
+
+# ------------------------------------------------------------
+# Terraform state
+# ------------------------------------------------------------
+
+*.tfstate
+*.tfstate.*
+**/*.tfstate
+**/*.tfstate.*
+
+# Local bootstrap state must never be committed
+bootstrap/terraform.tfstate
+bootstrap/terraform.tfstate.*
+
+
+# ------------------------------------------------------------
+# Terraform plan files
+# ------------------------------------------------------------
+
+*.tfplan
+*.plan
+tfplan
+**/tfplan
+**/*.tfplan
+
+
+# ------------------------------------------------------------
+# Terraform crash/debug files
+# ------------------------------------------------------------
+
+crash.log
+crash.*.log
+
+*.log
+
+
+# ------------------------------------------------------------
+# Terraform override files
+# ------------------------------------------------------------
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+
+# ------------------------------------------------------------
+# Terraform CLI configuration
+# ------------------------------------------------------------
+
+.terraformrc
+terraform.rc
+
+
+# ------------------------------------------------------------
+# Terraform variable files
+# ------------------------------------------------------------
+# Real tfvars may contain environment-specific or sensitive
+# information and should not be committed.
+#
+# IMPORTANT:
+# *.tfvars.tpl templates ARE intentionally committed.
+# ------------------------------------------------------------
+
+*.tfvars
+*.auto.tfvars
+*.tfvars.json
+*.auto.tfvars.json
+
+# Jenkins-rendered variable files
+*.generated.tfvars
+*.generated.auto.tfvars
+terraform.generated.tfvars
+**/*.generated.tfvars
+
+
+# ------------------------------------------------------------
+# DO NOT ignore variable templates
+# ------------------------------------------------------------
+
+!variable_templates/
+!variable_templates/*.tfvars.tpl
+
+
+# ------------------------------------------------------------
+# Terraform lock file
+# ------------------------------------------------------------
+# COMMIT .terraform.lock.hcl.
+#
+# It provides deterministic provider dependency versions.
+# ------------------------------------------------------------
+
+!.terraform.lock.hcl
+
+
+# ------------------------------------------------------------
+# Azure authentication / local Azure files
+# ------------------------------------------------------------
+
+.azure/
+**/.azure/
+
+azureProfile.json
+accessTokens.json
+
+# Service principal files
+*service-principal*.json
+*serviceprincipal*.json
+*sp-credentials*.json
+*azure-credentials*.json
+
+
+# ------------------------------------------------------------
+# Secrets / environment files
+# ------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+*.secret
+*.secrets
+secrets/
+**/secrets/
+
+credentials/
+**/credentials/
+
+*.pem
+*.key
+*.pfx
+*.p12
+
+
+# ------------------------------------------------------------
+# Jenkins generated/local artifacts
+# ------------------------------------------------------------
+
+jenkins_home/
+.jenkins/
+**/.jenkins/
+
+workspace/
+workspaces/
+
+build/
+builds/
+
+artifacts/
+**/artifacts/
+
+
+# ------------------------------------------------------------
+# Pipeline temporary files
+# ------------------------------------------------------------
+
+.tmp/
+tmp/
+temp/
+
+*.tmp
+*.temp
+
+
+# ------------------------------------------------------------
+# Migration / Wave temporary artifacts
+# ------------------------------------------------------------
+# Useful later when the Jenkins -> Wave migration tooling
+# creates temporary clones/work directories.
+# ------------------------------------------------------------
+
+.wave-temp/
+wave-temp/
+migration-temp/
+migration-workspace/
+
+
+# ------------------------------------------------------------
+# Kubernetes local configuration
+# ------------------------------------------------------------
+
+.kube/
+**/.kube/
+
+kubeconfig
+kubeconfig.*
+
+
+# ------------------------------------------------------------
+# Helm temporary/generated files
+# ------------------------------------------------------------
+
+*.tgz
+charts/*.tgz
+
+
+# ------------------------------------------------------------
+# IDE - Visual Studio Code
+# ------------------------------------------------------------
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+
+
+# ------------------------------------------------------------
+# JetBrains
+# ------------------------------------------------------------
+
+.idea/
+*.iml
+
+
+# ------------------------------------------------------------
+# Visual Studio
+# ------------------------------------------------------------
+
+.vs/
+
+
+# ------------------------------------------------------------
+# Operating system files
+# ------------------------------------------------------------
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+
+# ------------------------------------------------------------
+# Editor temporary files
+# ------------------------------------------------------------
+
+*.swp
+*.swo
+*.bak
+*.orig
+
+
+# ------------------------------------------------------------
+# Node dependencies
+# ------------------------------------------------------------
+# Useful if scripts/tools are later introduced.
+# ------------------------------------------------------------
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+# Useful for migration/helper scripts.
+# ------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+
+# ------------------------------------------------------------
+# Test / coverage output
+# ------------------------------------------------------------
+
+coverage/
+.coverage
+test-results/
+
+
+# ------------------------------------------------------------
+# Local generated output
+# ------------------------------------------------------------
+
+output/
+outputs/
+generated/
