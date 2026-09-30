@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Environment') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "Jenkins Execution Environment"
+                    echo "========================================"
+
+                    echo "User:"
+                    whoami
+
+                    echo ""
+                    echo "Hostname:"
+                    hostname
+
+                    echo ""
+                    echo "Git:"
+                    git --version
+
+                    echo ""
+                    echo "Terraform:"
+                    terraform version
+
+                    echo ""
+                    echo "Azure CLI:"
+                    az version
+                '''
+            }
+        }
+
+        stage('Repository Verification') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "Repository"
+                    echo "========================================"
+
+                    echo "Workspace:"
+                    pwd
+
+                    echo ""
+                    echo "Repository contents:"
+                    ls -la
+
+                    echo ""
+                    echo "Git branch:"
+                    git branch --show-current
+
+                    echo ""
+                    echo "Git commit:"
+                    git rev-parse HEAD
+                '''
+            }
+        }
+    }
+}

@@ -1,0 +1,132 @@
+name: Terraform Plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to plan
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - uat
+          - prod
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+
+    # Selects the corresponding GitHub Environment.
+    # Therefore secrets.X resolves from dev, qa, uat, or prod.
+    environment: ${{ inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: environments/${{ inputs.environment }}
+
+    env:
+      # ---------------------------------------------------------
+      # Azure / SPN
+      # ---------------------------------------------------------
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # Terraform Azure Provider authentication
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # ---------------------------------------------------------
+      # General
+      # ---------------------------------------------------------
+      AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+      PROJECT_NAME: ${{ secrets.PROJECT_NAME }}
+
+      # ---------------------------------------------------------
+      # Networking
+      # ---------------------------------------------------------
+      VNET_ADDRESS_SPACE: ${{ secrets.VNET_ADDRESS_SPACE }}
+      AKS_SUBNET_PREFIX: ${{ secrets.AKS_SUBNET_PREFIX }}
+      PRIVATE_ENDPOINT_SUBNET_PREFIX: ${{ secrets.PRIVATE_ENDPOINT_SUBNET_PREFIX }}
+
+      # ---------------------------------------------------------
+      # AKS
+      # ---------------------------------------------------------
+      AKS_SYSTEM_NODE_VM_SIZE: ${{ secrets.AKS_SYSTEM_NODE_VM_SIZE }}
+      AKS_SYSTEM_NODE_COUNT: ${{ secrets.AKS_SYSTEM_NODE_COUNT }}
+
+      AKS_USER_NODE_VM_SIZE: ${{ secrets.AKS_USER_NODE_VM_SIZE }}
+      AKS_USER_NODE_COUNT: ${{ secrets.AKS_USER_NODE_COUNT }}
+
+      # ---------------------------------------------------------
+      # ACR / Key Vault
+      # ---------------------------------------------------------
+      ACR_SKU: ${{ secrets.ACR_SKU }}
+      KEY_VAULT_SKU: ${{ secrets.KEY_VAULT_SKU }}
+
+    steps:
+
+      # ---------------------------------------------------------
+      # Checkout
+      # ---------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # Setup Terraform
+      # ---------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # ---------------------------------------------------------
+      # Generate tfvars from template + GitHub Secrets
+      # ---------------------------------------------------------
+      - name: Generate Terraform Variables
+        shell: bash
+        run: |
+          envsubst \
+            < ../../variable_templates/${{ inputs.environment }}.tfvars.tpl \
+            > terraform.generated.tfvars
+
+          echo "Terraform variable file generated for:"
+          echo "${{ inputs.environment }}"
+
+      # ---------------------------------------------------------
+      # Terraform Format Check
+      # ---------------------------------------------------------
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      # ---------------------------------------------------------
+      # Terraform Init
+      # ---------------------------------------------------------
+      - name: Terraform Init
+        run: terraform init
+
+      # ---------------------------------------------------------
+      # Terraform Validate
+      # ---------------------------------------------------------
+      - name: Terraform Validate
+        run: terraform validate
+
+      # ---------------------------------------------------------
+      # Terraform Plan
+      # ---------------------------------------------------------
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="terraform.generated.tfvars" \
+            -out=tfplan
+
+      # ---------------------------------------------------------
+      # Cleanup
+      # ---------------------------------------------------------
+      - name: Cleanup Generated Variables
+        if: always()
+        shell: bash
+        run: |
+          rm -f terraform.generated.tfvars
