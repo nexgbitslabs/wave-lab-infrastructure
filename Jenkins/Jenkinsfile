@@ -556,9 +556,8 @@ pipeline {
                         echo "Initializing environment Terraform..."
 
                         terraform \
-                          -chdir="$ENV_DIR" \
-                          init \
-                          -backend=false
+                            -chdir="$ENV_DIR" \
+                            init
 
                         echo ""
                         echo "Validating environment Terraform configuration..."
