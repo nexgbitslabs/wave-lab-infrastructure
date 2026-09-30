@@ -469,10 +469,13 @@ pipeline {
         // Terraform Initialize
         //
         // INITIALIZE CONTRACT:
-        // - Initialize bootstrap Terraform
-        // - Validate bootstrap Terraform
+        // - Initialize ONLY the selected environment
+        // - Connect Terraform to the existing Azure backend
+        // - Validate the selected environment
+        // - NEVER create the backend
         // - NEVER plan infrastructure
         // - NEVER apply infrastructure
+        // - NEVER destroy infrastructure
         // =====================================================
 
         stage('Terraform Initialize') {
@@ -517,58 +520,69 @@ pipeline {
                         echo "Terraform Initialize"
                         echo "========================================"
 
-                        echo ""
-                        echo "Initializing bootstrap Terraform configuration..."
-
-                        terraform \
-                        -chdir=bootstrap \
-                        init \
-                        -reconfigure
+                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
 
                         echo ""
-                        echo "Validating bootstrap Terraform configuration..."
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                        echo "Directory:   ${ENV_DIR}"
 
-                        terraform \
-                        -chdir=bootstrap \
-                        validate
+                        # -------------------------------------------------
+                        # Verify environment exists
+                        # -------------------------------------------------
 
-                        echo ""
-                        echo "========================================"
-                        echo "Bootstrap initialization completed."
-                        echo "NO terraform plan was executed."
-                        echo "NO terraform apply was executed."
-                        echo "NO terraform destroy was executed."
-                        echo "========================================"
-
-                        echo ""
-                            echo "========================================"
-                            echo "Initialize Environment Terraform"
-                            echo "========================================"
-
-                            ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
-
-                            echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
-                            echo "Directory:   ${ENV_DIR}"
-
-                            test -d "$ENV_DIR"
-
+                        if [ ! -d "$ENV_DIR" ]; then
                             echo ""
-                            echo "Initializing environment Terraform..."
+                            echo "ERROR: Terraform environment does not exist:"
+                            echo "$ENV_DIR"
+                            exit 1
+                        fi
 
-                            terraform \
+                        # -------------------------------------------------
+                        # Verify generated variables exist
+                        # -------------------------------------------------
+
+                        GENERATED_FILE="${ENV_DIR}/${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
+
+                        if [ ! -f "$GENERATED_FILE" ]; then
+                            echo ""
+                            echo "ERROR: Generated Terraform variable file not found:"
+                            echo "$GENERATED_FILE"
+                            exit 1
+                        fi
+
+                        # -------------------------------------------------
+                        # Initialize selected environment
+                        # -------------------------------------------------
+
+                        echo ""
+                        echo "Initializing ${DEPLOYMENT_ENVIRONMENT} Terraform..."
+
+                        terraform \
                             -chdir="$ENV_DIR" \
                             init \
                             -reconfigure
 
-                            echo ""
-                            echo "Validating environment Terraform configuration..."
+                        # -------------------------------------------------
+                        # Validate selected environment
+                        # -------------------------------------------------
 
-                            terraform \
+                        echo ""
+                        echo "Validating ${DEPLOYMENT_ENVIRONMENT} Terraform..."
+
+                        terraform \
                             -chdir="$ENV_DIR" \
                             validate
 
-                            echo ""
-                            echo "Environment Terraform initialization completed."
+                        echo ""
+                        echo "========================================"
+                        echo "Terraform Initialization Complete"
+                        echo "========================================"
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                        echo ""
+                        echo "NO terraform plan was executed."
+                        echo "NO terraform apply was executed."
+                        echo "NO terraform destroy was executed."
+                        echo "========================================"
                     '''
                 }
             }
