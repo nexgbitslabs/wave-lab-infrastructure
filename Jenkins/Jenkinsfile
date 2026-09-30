@@ -510,7 +510,7 @@ pipeline {
                         echo ""
                         echo "Initializing bootstrap Terraform configuration..."
 
-                        #terraform \
+                        terraform \
                           -chdir=bootstrap \
                           init
 
