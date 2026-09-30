@@ -540,6 +540,159 @@ pipeline {
             }
         }
 
+        stage('Bootstrap Terraform Apply') {
+        when {
+            expression {
+                params.ACTION == 'initialize'
+            }
+        }
+
+        steps {
+
+            withCredentials([
+                string(
+                    credentialsId: 'azure-terraform-client-id',
+                    variable: 'ARM_CLIENT_ID'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-client-secret',
+                    variable: 'ARM_CLIENT_SECRET'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-tenant-id',
+                    variable: 'ARM_TENANT_ID'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-subscription-id',
+                    variable: 'ARM_SUBSCRIPTION_ID'
+                )
+            ]) {
+
+                sh '''
+                    set -e
+                    set +x
+
+                    echo "========================================"
+                    echo "Bootstrap Terraform Apply"
+                    echo "========================================"
+
+                    if [ ! -f bootstrap/bootstrap.tfplan ]; then
+                        echo "ERROR: bootstrap/bootstrap.tfplan was not found."
+                        exit 1
+                    fi
+
+                    echo
+                    echo "Applying the exact saved bootstrap plan..."
+
+                    terraform \
+                        -chdir=bootstrap \
+                        apply \
+                        -auto-approve \
+                        bootstrap.tfplan
+
+                    echo
+                    echo "========================================"
+                    echo "Bootstrap infrastructure created."
+                    echo "========================================"
+                '''
+            }
+        }
+    }
+
+    stage('Verify Bootstrap Infrastructure') {
+        when {
+            expression {
+                params.ACTION == 'initialize'
+            }
+        }
+
+        steps {
+
+            withCredentials([
+                string(
+                    credentialsId: 'azure-terraform-client-id',
+                    variable: 'ARM_CLIENT_ID'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-client-secret',
+                    variable: 'ARM_CLIENT_SECRET'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-tenant-id',
+                    variable: 'ARM_TENANT_ID'
+                ),
+                string(
+                    credentialsId: 'azure-terraform-subscription-id',
+                    variable: 'ARM_SUBSCRIPTION_ID'
+                )
+            ]) {
+
+                sh '''
+                    set -e
+                    set +x
+
+                    echo "========================================"
+                    echo "Verify Bootstrap Infrastructure"
+                    echo "========================================"
+
+                    RESOURCE_GROUP=$(terraform \
+                        -chdir=bootstrap \
+                        output \
+                        -raw resource_group_name)
+
+                    STORAGE_ACCOUNT=$(terraform \
+                        -chdir=bootstrap \
+                        output \
+                        -raw storage_account_name)
+
+                    CONTAINER=$(terraform \
+                        -chdir=bootstrap \
+                        output \
+                        -raw container_name)
+
+                    echo "Resource Group:  ${RESOURCE_GROUP}"
+                    echo "Storage Account: ${STORAGE_ACCOUNT}"
+                    echo "Container:       ${CONTAINER}"
+
+                    echo
+                    echo "Verifying resource group in Azure..."
+
+                    az group show \
+                        --name "${RESOURCE_GROUP}" \
+                        --output none
+
+                    echo "Resource group verified."
+
+                    echo
+                    echo "Verifying storage account in Azure..."
+
+                    az storage account show \
+                        --name "${STORAGE_ACCOUNT}" \
+                        --resource-group "${RESOURCE_GROUP}" \
+                        --output none
+
+                    echo "Storage account verified."
+
+                    echo
+                    echo "Verifying tfstate container through Azure Resource Manager..."
+
+                    az storage container-rm show \
+                        --resource-group "${RESOURCE_GROUP}" \
+                        --storage-account "${STORAGE_ACCOUNT}" \
+                        --name "${CONTAINER}" \
+                        --output none
+
+                    echo "Container verified."
+
+                    echo
+                    echo "========================================"
+                    echo "BOOTSTRAP INITIALIZATION SUCCESSFUL"
+                    echo "========================================"
+                '''
+            }
+        }
+    }
+
 
         // =====================================================
         // PLAN
