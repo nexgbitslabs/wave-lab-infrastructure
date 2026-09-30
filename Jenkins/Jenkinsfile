@@ -455,14 +455,14 @@ pipeline {
             }
         }
 
-
         // =====================================================
         // Bootstrap Terraform Plan
         //
-        // CHECKPOINT 1:
-        // This stage intentionally performs PLAN only.
-        //
-        // No bootstrap infrastructure is applied yet.
+        // INITIALIZE CONTRACT:
+        // - Initialize bootstrap Terraform
+        // - Validate bootstrap Terraform
+        // - Create bootstrap plan
+        // - NEVER apply infrastructure
         // =====================================================
 
         stage('Bootstrap Terraform Plan') {
@@ -532,6 +532,7 @@ pipeline {
 
                         echo ""
                         echo "========================================"
+                        echo "Bootstrap initialization completed."
                         echo "Bootstrap plan created successfully."
                         echo "NO infrastructure has been applied."
                         echo "========================================"
@@ -540,166 +541,12 @@ pipeline {
             }
         }
 
-        stage('Bootstrap Terraform Apply') {
-        when {
-            expression {
-                params.ACTION == 'initialize'
-            }
-        }
-
-        steps {
-
-            withCredentials([
-                string(
-                    credentialsId: 'azure-terraform-client-id',
-                    variable: 'ARM_CLIENT_ID'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-client-secret',
-                    variable: 'ARM_CLIENT_SECRET'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-tenant-id',
-                    variable: 'ARM_TENANT_ID'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-subscription-id',
-                    variable: 'ARM_SUBSCRIPTION_ID'
-                )
-            ]) {
-
-                sh '''
-                    set -e
-                    set +x
-
-                    echo "========================================"
-                    echo "Bootstrap Terraform Apply"
-                    echo "========================================"
-
-                    if [ ! -f bootstrap/bootstrap.tfplan ]; then
-                        echo "ERROR: bootstrap/bootstrap.tfplan was not found."
-                        exit 1
-                    fi
-
-                    echo
-                    echo "Applying the exact saved bootstrap plan..."
-
-                    terraform \
-                        -chdir=bootstrap \
-                        apply \
-                        -auto-approve \
-                        bootstrap.tfplan
-
-                    echo
-                    echo "========================================"
-                    echo "Bootstrap infrastructure created."
-                    echo "========================================"
-                '''
-            }
-        }
-    }
-
-    stage('Verify Bootstrap Infrastructure') {
-        when {
-            expression {
-                params.ACTION == 'initialize'
-            }
-        }
-
-        steps {
-
-            withCredentials([
-                string(
-                    credentialsId: 'azure-terraform-client-id',
-                    variable: 'ARM_CLIENT_ID'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-client-secret',
-                    variable: 'ARM_CLIENT_SECRET'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-tenant-id',
-                    variable: 'ARM_TENANT_ID'
-                ),
-                string(
-                    credentialsId: 'azure-terraform-subscription-id',
-                    variable: 'ARM_SUBSCRIPTION_ID'
-                )
-            ]) {
-
-                sh '''
-                    set -e
-                    set +x
-
-                    echo "========================================"
-                    echo "Verify Bootstrap Infrastructure"
-                    echo "========================================"
-
-                    RESOURCE_GROUP=$(terraform \
-                        -chdir=bootstrap \
-                        output \
-                        -raw resource_group_name)
-
-                    STORAGE_ACCOUNT=$(terraform \
-                        -chdir=bootstrap \
-                        output \
-                        -raw storage_account_name)
-
-                    CONTAINER=$(terraform \
-                        -chdir=bootstrap \
-                        output \
-                        -raw container_name)
-
-                    echo "Resource Group:  ${RESOURCE_GROUP}"
-                    echo "Storage Account: ${STORAGE_ACCOUNT}"
-                    echo "Container:       ${CONTAINER}"
-
-                    echo
-                    echo "Verifying resource group in Azure..."
-
-                    az group show \
-                        --name "${RESOURCE_GROUP}" \
-                        --output none
-
-                    echo "Resource group verified."
-
-                    echo
-                    echo "Verifying storage account in Azure..."
-
-                    az storage account show \
-                        --name "${STORAGE_ACCOUNT}" \
-                        --resource-group "${RESOURCE_GROUP}" \
-                        --output none
-
-                    echo "Storage account verified."
-
-                    echo
-                    echo "Verifying tfstate container through Azure Resource Manager..."
-
-                    az storage container-rm show \
-                        --resource-group "${RESOURCE_GROUP}" \
-                        --storage-account "${STORAGE_ACCOUNT}" \
-                        --name "${CONTAINER}" \
-                        --output none
-
-                    echo "Container verified."
-
-                    echo
-                    echo "========================================"
-                    echo "BOOTSTRAP INITIALIZATION SUCCESSFUL"
-                    echo "========================================"
-                '''
-            }
-        }
-    }
-
 
         // =====================================================
         // PLAN
         //
-        // Reserved for Checkpoint 2.
-        // We intentionally do not execute the environment
-        // Terraform plan until the remote backend exists.
+        // Safe default lifecycle operation.
+        // This action MUST NEVER apply infrastructure.
         // =====================================================
 
         stage('Environment Plan') {
@@ -712,16 +559,20 @@ pipeline {
 
             steps {
                 echo """
-                ACTION=plan selected.
+                ========================================
+                Terraform Environment Plan
+                ========================================
 
+                ACTION=plan selected.
                 Environment: ${params.ENVIRONMENT}
 
-                Environment planning is not enabled yet because
-                the Terraform Azure remote-state backend must
-                first be initialized.
+                PLAN is a read-only lifecycle action.
 
-                Run ACTION=initialize to validate the bootstrap
-                plan for the remote-state infrastructure.
+                No infrastructure will be applied.
+
+                Environment planning is intentionally reserved
+                until the Azure remote-state backend has been
+                created through an explicit ACTION=apply.
                 """
             }
         }
@@ -730,7 +581,9 @@ pipeline {
         // =====================================================
         // APPLY
         //
-        // Reserved for Checkpoint 2.
+        // APPLY must be explicitly selected by the operator.
+        // This is the lifecycle action permitted to create or
+        // modify infrastructure.
         // =====================================================
 
         stage('Environment Apply') {
@@ -743,13 +596,20 @@ pipeline {
 
             steps {
                 echo """
+                ========================================
+                Terraform Environment Apply
+                ========================================
+
                 ACTION=apply selected.
+                Environment: ${params.ENVIRONMENT}
 
-                Apply is intentionally disabled at this checkpoint.
+                APPLY was explicitly selected.
 
-                The Azure Terraform remote-state backend must be
-                initialized and validated before environment
-                infrastructure can be applied.
+                Infrastructure application is intentionally
+                reserved for this action.
+
+                Bootstrap creation and environment application
+                are not enabled in this checkpoint yet.
                 """
             }
         }
@@ -758,10 +618,9 @@ pipeline {
         // =====================================================
         // DESTROY
         //
-        // Reserved for Checkpoint 2.
-        //
-        // This will eventually destroy the selected environment,
-        // NOT the bootstrap/state infrastructure.
+        // Destroy will eventually affect ONLY the selected
+        // environment. Bootstrap/state infrastructure must not
+        // be destroyed by this lifecycle action.
         // =====================================================
 
         stage('Environment Destroy') {
@@ -774,16 +633,22 @@ pipeline {
 
             steps {
                 echo """
+                ========================================
+                Terraform Environment Destroy
+                ========================================
+
                 ACTION=destroy selected.
+                Environment: ${params.ENVIRONMENT}
 
-                Destroy is intentionally disabled at this checkpoint.
+                Destroy is intentionally disabled at this
+                checkpoint.
 
-                Future destroy operations will target:
+                Future destroy operations will target only:
 
                     ${params.ENVIRONMENT}
 
-                The Terraform bootstrap/state infrastructure will
-                NOT be destroyed by this action.
+                Bootstrap/state infrastructure will NOT be
+                destroyed by this action.
                 """
             }
         }
