@@ -522,15 +522,15 @@ pipeline {
 
                         terraform \
                         -chdir=bootstrap \
-                        init
-
+                        init \
+                        -reconfigure
 
                         echo ""
                         echo "Validating bootstrap Terraform configuration..."
 
                         terraform \
-                          -chdir=bootstrap \
-                          validate
+                        -chdir=bootstrap \
+                        validate
 
                         echo ""
                         echo "========================================"
