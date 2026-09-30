@@ -55,6 +55,14 @@ pipeline {
         stage('Load Environment Properties') {
             steps {
                 script {
+                    if (env.DEPLOYMENT_ENVIRONMENT != params.ENVIRONMENT) {
+                        error(
+                            "Environment mismatch: Jenkins selected '${params.ENVIRONMENT}' " +
+                            "but properties file declares '${env.DEPLOYMENT_ENVIRONMENT}'."
+                        )
+                    }
+
+                    echo "Environment loaded: ${env.DEPLOYMENT_ENVIRONMENT}"
 
                     def propertiesFile =
                         "Jenkins/properties/${params.ENVIRONMENT}.properties"
@@ -181,17 +189,31 @@ pipeline {
                         set +x
                         set -e
 
+                        # -------------------------------------------------
+                        # Map Jenkins credentials to template variables
+                        # -------------------------------------------------
+
                         export AZURE_TENANT_ID="$ARM_TENANT_ID"
                         export AZURE_SUBSCRIPTION_ID="$ARM_SUBSCRIPTION_ID"
 
-                        TEMPLATE="variable_templates/${ENVIRONMENT}.tfvars.tpl"
+                        # -------------------------------------------------
+                        # Environment selected from Jenkins properties
+                        # -------------------------------------------------
 
-                        OUTPUT="environments/${ENVIRONMENT}/${ENVIRONMENT}.generated.tfvars"
+                        export ENVIRONMENT="$DEPLOYMENT_ENVIRONMENT"
 
-                        echo "Rendering:"
-                        echo "$TEMPLATE"
-                        echo "to:"
-                        echo "$OUTPUT"
+                        TEMPLATE="variable_templates/${DEPLOYMENT_ENVIRONMENT}.tfvars.tpl"
+
+                        OUTPUT="environments/${DEPLOYMENT_ENVIRONMENT}/${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
+
+                        echo "Rendering Terraform variables"
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                        echo "Template:    ${TEMPLATE}"
+                        echo "Output:      ${OUTPUT}"
+
+                        test -f "$TEMPLATE"
+
+                        mkdir -p "environments/${DEPLOYMENT_ENVIRONMENT}"
 
                         envsubst < "$TEMPLATE" > "$OUTPUT"
 
@@ -211,19 +233,23 @@ pipeline {
                 sh '''
                     set -e
 
-                    GENERATED_FILE="environments/${ENVIRONMENT}/${ENVIRONMENT}.generated.tfvars"
+                    GENERATED_FILE="environments/${DEPLOYMENT_ENVIRONMENT}/${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
+
+                    echo "Checking generated Terraform configuration:"
+                    echo "$GENERATED_FILE"
 
                     test -f "$GENERATED_FILE"
 
-                    echo "Generated Terraform configuration exists."
-
-                    # Check that no unresolved template placeholders remain.
                     if grep -q '\\${' "$GENERATED_FILE"; then
-                        echo "ERROR: Unresolved variables found:"
+
+                        echo "ERROR: Unresolved template variables found."
+
                         grep '\\${' "$GENERATED_FILE"
+
                         exit 1
                     fi
 
+                    echo "Generated Terraform configuration validated."
                     echo "No unresolved template variables found."
                 '''
             }
