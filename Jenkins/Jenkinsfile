@@ -317,13 +317,27 @@ pipeline {
         // Terraform Format and Validation
         // =====================================================
 
-        stage('Terraform Validate') {
+                // =====================================================
+        // Terraform Format Check
+        //
+        // COMMON STAGE:
+        // - Checks Terraform formatting only
+        // - Does NOT initialize Terraform
+        // - Does NOT plan Terraform
+        // - Does NOT apply Terraform
+        // - Does NOT destroy Terraform
+        //
+        // Terraform initialization and validation belong only
+        // to the explicit ACTION=initialize lifecycle.
+        // =====================================================
+
+        stage('Terraform Format Check') {
             steps {
                 sh '''
                     set -e
 
                     echo "========================================"
-                    echo "Terraform Validation"
+                    echo "Terraform Format Check"
                     echo "========================================"
 
                     ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
@@ -339,22 +353,14 @@ pipeline {
                     terraform fmt -check -recursive
 
                     echo ""
-                    echo "Initializing Terraform without backend..."
-
-                    terraform \
-                      -chdir="$ENV_DIR" \
-                      init \
-                      -backend=false
+                    echo "Terraform formatting check completed."
 
                     echo ""
-                    echo "Validating Terraform configuration..."
-
-                    terraform \
-                      -chdir="$ENV_DIR" \
-                      validate
-
-                    echo ""
-                    echo "Terraform configuration is valid."
+                    echo "No terraform init was executed."
+                    echo "No terraform validate was executed."
+                    echo "No terraform plan was executed."
+                    echo "No terraform apply was executed."
+                    echo "No terraform destroy was executed."
                 '''
             }
         }
@@ -533,6 +539,36 @@ pipeline {
                         echo "NO terraform apply was executed."
                         echo "NO terraform destroy was executed."
                         echo "========================================"
+
+                                                echo ""
+                        echo "========================================"
+                        echo "Initialize Environment Terraform"
+                        echo "========================================"
+
+                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
+
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                        echo "Directory:   ${ENV_DIR}"
+
+                        test -d "$ENV_DIR"
+
+                        echo ""
+                        echo "Initializing environment Terraform..."
+
+                        terraform \
+                          -chdir="$ENV_DIR" \
+                          init \
+                          -backend=false
+
+                        echo ""
+                        echo "Validating environment Terraform configuration..."
+
+                        terraform \
+                          -chdir="$ENV_DIR" \
+                          validate
+
+                        echo ""
+                        echo "Environment Terraform initialization completed."
                     '''
                 }
             }
