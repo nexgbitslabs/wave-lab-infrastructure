@@ -511,8 +511,9 @@ pipeline {
                         echo "Initializing bootstrap Terraform configuration..."
 
                         terraform \
-                          -chdir=bootstrap \
-                          init
+                            -chdir=bootstrap \
+                            init \
+                            -backend=false
 
                         echo ""
                         echo "Validating bootstrap Terraform configuration..."
