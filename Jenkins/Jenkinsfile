@@ -2,10 +2,17 @@ pipeline {
     agent any
 
     parameters {
+
         choice(
             name: 'ENVIRONMENT',
             choices: ['dev', 'qa', 'uat', 'prod'],
             description: 'Environment to deploy'
+        )
+
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'initialize', 'apply', 'destroy'],
+            description: 'Terraform operation to execute. Default is plan.'
         )
     }
 
@@ -43,16 +50,16 @@ pipeline {
                     echo ""
                     echo "Azure CLI:"
                     az version
+
+                    echo ""
+                    echo "Selected Environment: ${ENVIRONMENT}"
+                    echo "Selected Action:      ${ACTION}"
                 '''
             }
         }
 
 
         // =====================================================
-        // Load environment-specific Jenkins properties
-        // =====================================================
-
-                // =====================================================
         // Load environment-specific Jenkins properties
         // =====================================================
 
@@ -72,7 +79,7 @@ pipeline {
                     }
 
                     // -------------------------------------------------
-                    // Load properties FIRST
+                    // Load properties
                     // -------------------------------------------------
 
                     def props = readProperties file: propertiesFile
@@ -137,6 +144,7 @@ pipeline {
                     echo "Environment loaded: ${env.DEPLOYMENT_ENVIRONMENT}"
                     echo "Azure location:     ${env.AZURE_LOCATION}"
                     echo "Project:            ${env.PROJECT_NAME}"
+                    echo "Terraform action:   ${params.ACTION}"
                 }
             }
         }
@@ -201,7 +209,7 @@ pipeline {
 
 
         // =====================================================
-        // Render Terraform variables
+        // Render environment Terraform variables
         // =====================================================
 
         stage('Render Terraform Variables') {
@@ -242,7 +250,10 @@ pipeline {
 
                         OUTPUT="environments/${DEPLOYMENT_ENVIRONMENT}/${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
 
-                        echo "Rendering Terraform variables"
+                        echo "========================================"
+                        echo "Render Environment Terraform Variables"
+                        echo "========================================"
+
                         echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
                         echo "Template:    ${TEMPLATE}"
                         echo "Output:      ${OUTPUT}"
@@ -253,6 +264,8 @@ pipeline {
 
                         envsubst < "$TEMPLATE" > "$OUTPUT"
 
+                        test -f "$OUTPUT"
+
                         echo "Terraform variable file successfully generated."
                     '''
                 }
@@ -261,7 +274,7 @@ pipeline {
 
 
         // =====================================================
-        // Verify generated file exists
+        // Verify generated environment configuration
         // =====================================================
 
         stage('Verify Generated Configuration') {
@@ -270,6 +283,10 @@ pipeline {
                     set -e
 
                     GENERATED_FILE="environments/${DEPLOYMENT_ENVIRONMENT}/${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
+
+                    echo "========================================"
+                    echo "Verify Environment Configuration"
+                    echo "========================================"
 
                     echo "Checking generated Terraform configuration:"
                     echo "$GENERATED_FILE"
@@ -291,7 +308,8 @@ pipeline {
             }
         }
 
-                // =====================================================
+
+        // =====================================================
         // Terraform Format and Validation
         // =====================================================
 
@@ -336,34 +354,357 @@ pipeline {
                 '''
             }
         }
+
+
+        // =====================================================
+        // Render Bootstrap Terraform Variables
+        //
+        // Only used when ACTION=initialize
+        // =====================================================
+
+        stage('Render Bootstrap Variables') {
+
+            when {
+                expression {
+                    params.ACTION == 'initialize'
+                }
+            }
+
+            steps {
+
+                withCredentials([
+
+                    string(
+                        credentialsId: 'azure-terraform-subscription-id',
+                        variable: 'ARM_SUBSCRIPTION_ID'
+                    )
+
+                ]) {
+
+                    sh '''
+                        set +x
+                        set -e
+
+                        echo "========================================"
+                        echo "Render Bootstrap Terraform Variables"
+                        echo "========================================"
+
+                        export AZURE_SUBSCRIPTION_ID="$ARM_SUBSCRIPTION_ID"
+
+                        TEMPLATE="variable_templates/bootstrap.tfvars.tpl"
+                        OUTPUT="bootstrap/bootstrap.generated.tfvars"
+
+                        echo "Template: ${TEMPLATE}"
+                        echo "Output:   ${OUTPUT}"
+
+                        test -f "$TEMPLATE"
+                        test -d bootstrap
+
+                        envsubst < "$TEMPLATE" > "$OUTPUT"
+
+                        test -f "$OUTPUT"
+
+                        echo "Bootstrap Terraform variables generated."
+                    '''
+                }
+            }
+        }
+
+
+        // =====================================================
+        // Verify Bootstrap Configuration
+        //
+        // Only used when ACTION=initialize
+        // =====================================================
+
+        stage('Verify Bootstrap Configuration') {
+
+            when {
+                expression {
+                    params.ACTION == 'initialize'
+                }
+            }
+
+            steps {
+                sh '''
+                    set -e
+
+                    echo "========================================"
+                    echo "Verify Bootstrap Configuration"
+                    echo "========================================"
+
+                    GENERATED_FILE="bootstrap/bootstrap.generated.tfvars"
+
+                    echo "Checking generated bootstrap configuration:"
+                    echo "$GENERATED_FILE"
+
+                    test -f "$GENERATED_FILE"
+
+                    if grep -q '\\${' "$GENERATED_FILE"; then
+
+                        echo "ERROR: Unresolved bootstrap template variables found."
+
+                        grep '\\${' "$GENERATED_FILE"
+
+                        exit 1
+                    fi
+
+                    echo "Bootstrap configuration validated."
+                    echo "No unresolved template variables found."
+                '''
+            }
+        }
+
+
+        // =====================================================
+        // Bootstrap Terraform Plan
+        //
+        // CHECKPOINT 1:
+        // This stage intentionally performs PLAN only.
+        //
+        // No bootstrap infrastructure is applied yet.
+        // =====================================================
+
+        stage('Bootstrap Terraform Plan') {
+
+            when {
+                expression {
+                    params.ACTION == 'initialize'
+                }
+            }
+
+            steps {
+
+                withCredentials([
+
+                    string(
+                        credentialsId: 'azure-terraform-client-id',
+                        variable: 'ARM_CLIENT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-client-secret',
+                        variable: 'ARM_CLIENT_SECRET'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-tenant-id',
+                        variable: 'ARM_TENANT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'azure-terraform-subscription-id',
+                        variable: 'ARM_SUBSCRIPTION_ID'
+                    )
+
+                ]) {
+
+                    sh '''
+                        set +x
+                        set -e
+
+                        echo "========================================"
+                        echo "Bootstrap Terraform Plan"
+                        echo "========================================"
+
+                        echo ""
+                        echo "Initializing bootstrap Terraform configuration..."
+
+                        terraform \
+                          -chdir=bootstrap \
+                          init
+
+                        echo ""
+                        echo "Validating bootstrap Terraform configuration..."
+
+                        terraform \
+                          -chdir=bootstrap \
+                          validate
+
+                        echo ""
+                        echo "Creating bootstrap Terraform plan..."
+
+                        terraform \
+                          -chdir=bootstrap \
+                          plan \
+                          -var-file=bootstrap.generated.tfvars \
+                          -out=bootstrap.tfplan
+
+                        echo ""
+                        echo "========================================"
+                        echo "Bootstrap plan created successfully."
+                        echo "NO infrastructure has been applied."
+                        echo "========================================"
+                    '''
+                }
+            }
+        }
+
+
+        // =====================================================
+        // PLAN
+        //
+        // Reserved for Checkpoint 2.
+        // We intentionally do not execute the environment
+        // Terraform plan until the remote backend exists.
+        // =====================================================
+
+        stage('Environment Plan') {
+
+            when {
+                expression {
+                    params.ACTION == 'plan'
+                }
+            }
+
+            steps {
+                echo """
+                ACTION=plan selected.
+
+                Environment: ${params.ENVIRONMENT}
+
+                Environment planning is not enabled yet because
+                the Terraform Azure remote-state backend must
+                first be initialized.
+
+                Run ACTION=initialize to validate the bootstrap
+                plan for the remote-state infrastructure.
+                """
+            }
+        }
+
+
+        // =====================================================
+        // APPLY
+        //
+        // Reserved for Checkpoint 2.
+        // =====================================================
+
+        stage('Environment Apply') {
+
+            when {
+                expression {
+                    params.ACTION == 'apply'
+                }
+            }
+
+            steps {
+                echo """
+                ACTION=apply selected.
+
+                Apply is intentionally disabled at this checkpoint.
+
+                The Azure Terraform remote-state backend must be
+                initialized and validated before environment
+                infrastructure can be applied.
+                """
+            }
+        }
+
+
+        // =====================================================
+        // DESTROY
+        //
+        // Reserved for Checkpoint 2.
+        //
+        // This will eventually destroy the selected environment,
+        // NOT the bootstrap/state infrastructure.
+        // =====================================================
+
+        stage('Environment Destroy') {
+
+            when {
+                expression {
+                    params.ACTION == 'destroy'
+                }
+            }
+
+            steps {
+                echo """
+                ACTION=destroy selected.
+
+                Destroy is intentionally disabled at this checkpoint.
+
+                Future destroy operations will target:
+
+                    ${params.ENVIRONMENT}
+
+                The Terraform bootstrap/state infrastructure will
+                NOT be destroyed by this action.
+                """
+            }
+        }
     }
 
 
+    // =========================================================
+    // Post Actions
+    // =========================================================
+
     post {
 
-                always {
+        always {
+
             sh '''
+                echo "========================================"
                 echo "Cleaning generated Terraform files..."
+                echo "========================================"
+
+                # -------------------------------------------------
+                # Environment generated tfvars
+                # -------------------------------------------------
 
                 find environments \
                   -type f \
                   -name "*.generated.tfvars" \
                   -delete || true
 
+                # -------------------------------------------------
+                # Environment Terraform working directories
+                # -------------------------------------------------
+
                 find environments \
                   -type d \
                   -name ".terraform" \
                   -prune \
                   -exec rm -rf {} + || true
+
+                # -------------------------------------------------
+                # Bootstrap generated tfvars
+                # -------------------------------------------------
+
+                rm -f \
+                  bootstrap/bootstrap.generated.tfvars || true
+
+                # -------------------------------------------------
+                # Bootstrap plan
+                # -------------------------------------------------
+
+                rm -f \
+                  bootstrap/bootstrap.tfplan || true
+
+                # -------------------------------------------------
+                # Bootstrap Terraform working directory
+                # -------------------------------------------------
+
+                rm -rf \
+                  bootstrap/.terraform || true
+
+                echo ""
+                echo "Terraform cleanup completed."
             '''
         }
 
         success {
-            echo 'Jenkins validation pipeline completed successfully.'
+            echo "Jenkins Terraform pipeline completed successfully."
+            echo "Environment: ${params.ENVIRONMENT}"
+            echo "Action:      ${params.ACTION}"
         }
 
         failure {
-            echo 'Jenkins validation pipeline failed.'
+            echo "Jenkins Terraform pipeline failed."
+            echo "Environment: ${params.ENVIRONMENT}"
+            echo "Action:      ${params.ACTION}"
         }
     }
 }
