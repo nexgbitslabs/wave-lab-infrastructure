@@ -26,3 +26,4 @@ az ad sp create-for-rbac \
 //NB assign contributor at subscription scope to the sp-wave-lab-terraform
 Contributor
 </script>
+

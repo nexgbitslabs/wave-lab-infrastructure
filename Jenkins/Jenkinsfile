@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     parameters {
 
         choice(
@@ -456,16 +460,16 @@ pipeline {
         }
 
         // =====================================================
-        // Bootstrap Terraform Plan
+        // Terraform Initialize
         //
         // INITIALIZE CONTRACT:
         // - Initialize bootstrap Terraform
         // - Validate bootstrap Terraform
-        // - Create bootstrap plan
+        // - NEVER plan infrastructure
         // - NEVER apply infrastructure
         // =====================================================
 
-        stage('Bootstrap Terraform Plan') {
+        stage('Terraform Initialize') {
 
             when {
                 expression {
@@ -504,15 +508,19 @@ pipeline {
                         set -e
 
                         echo "========================================"
-                        echo "Bootstrap Terraform Plan"
+                        echo "Terraform Initialize"
                         echo "========================================"
 
                         echo ""
                         echo "Initializing bootstrap Terraform configuration..."
 
-                        terraform \
-                          -chdir=bootstrap \
-                          init
+                        if [ -d "bootstrap/.terraform" ]; then
+                            echo "Bootstrap Terraform is already initialized. Skipping terraform init."
+                        else
+                            terraform \
+                              -chdir=bootstrap \
+                              init
+                        fi
 
                         echo ""
                         echo "Validating bootstrap Terraform configuration..."
@@ -522,19 +530,11 @@ pipeline {
                           validate
 
                         echo ""
-                        echo "Creating bootstrap Terraform plan..."
-
-                        terraform \
-                          -chdir=bootstrap \
-                          plan \
-                          -var-file=bootstrap.generated.tfvars \
-                          -out=bootstrap.tfplan
-
-                        echo ""
                         echo "========================================"
                         echo "Bootstrap initialization completed."
-                        echo "Bootstrap plan created successfully."
-                        echo "NO infrastructure has been applied."
+                        echo "NO terraform plan was executed."
+                        echo "NO terraform apply was executed."
+                        echo "NO terraform destroy was executed."
                         echo "========================================"
                     '''
                 }
@@ -543,173 +543,154 @@ pipeline {
 
 
         // =====================================================
-        // PLAN
-        //
-        // Safe default lifecycle operation.
-        // This action MUST NEVER apply infrastructure.
+        // PLAN - intentional action only
         // =====================================================
-
         stage('Environment Plan') {
-
-            when {
-                expression {
-                    params.ACTION == 'plan'
-                }
-            }
-
+            when { expression { params.ACTION == 'plan' } }
             steps {
-                echo """
-                ========================================
-                Terraform Environment Plan
-                ========================================
+                withCredentials([
+                    string(credentialsId: 'azure-terraform-client-id', variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-terraform-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                    string(credentialsId: 'azure-terraform-tenant-id', variable: 'ARM_TENANT_ID'),
+                    string(credentialsId: 'azure-terraform-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                ]) {
+                    sh '''
+                        set +x
+                        set -e
+                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
+                        VAR_FILE="${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
+                        PLAN_FILE="${DEPLOYMENT_ENVIRONMENT}.tfplan"
 
-                ACTION=plan selected.
-                Environment: ${params.ENVIRONMENT}
+                        echo "========================================"
+                        echo "Terraform Environment Plan"
+                        echo "========================================"
+                        echo "ACTION=plan selected intentionally."
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
 
-                PLAN is a read-only lifecycle action.
+                        test -d "$ENV_DIR"
+                        test -f "$ENV_DIR/$VAR_FILE"
 
-                No infrastructure will be applied.
+                        if [ ! -d "$ENV_DIR/.terraform" ]; then
+                            echo "ERROR: Environment Terraform is not initialized."
+                            echo "PLAN will not automatically run initialize."
+                            exit 1
+                        fi
 
-                Environment planning is intentionally reserved
-                until the Azure remote-state backend has been
-                created through an explicit ACTION=apply.
-                """
+                        terraform -chdir="$ENV_DIR" plan \
+                          -var-file="$VAR_FILE" \
+                          -out="$PLAN_FILE"
+
+                        echo "Plan completed. No apply or destroy was executed."
+                    '''
+                }
             }
         }
 
-
         // =====================================================
-        // APPLY
-        //
-        // APPLY must be explicitly selected by the operator.
-        // This is the lifecycle action permitted to create or
-        // modify infrastructure.
+        // APPLY - intentional action only
         // =====================================================
-
         stage('Environment Apply') {
-
-            when {
-                expression {
-                    params.ACTION == 'apply'
-                }
-            }
-
+            when { expression { params.ACTION == 'apply' } }
             steps {
-                echo """
-                ========================================
-                Terraform Environment Apply
-                ========================================
+                withCredentials([
+                    string(credentialsId: 'azure-terraform-client-id', variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-terraform-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                    string(credentialsId: 'azure-terraform-tenant-id', variable: 'ARM_TENANT_ID'),
+                    string(credentialsId: 'azure-terraform-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                ]) {
+                    sh '''
+                        set +x
+                        set -e
+                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
+                        PLAN_FILE="${DEPLOYMENT_ENVIRONMENT}.tfplan"
 
-                ACTION=apply selected.
-                Environment: ${params.ENVIRONMENT}
+                        echo "========================================"
+                        echo "Terraform Environment Apply"
+                        echo "========================================"
+                        echo "ACTION=apply selected intentionally."
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
 
-                APPLY was explicitly selected.
+                        test -d "$ENV_DIR"
 
-                Infrastructure application is intentionally
-                reserved for this action.
+                        if [ ! -d "$ENV_DIR/.terraform" ]; then
+                            echo "ERROR: Environment Terraform is not initialized."
+                            echo "APPLY will not automatically run initialize."
+                            exit 1
+                        fi
 
-                Bootstrap creation and environment application
-                are not enabled in this checkpoint yet.
-                """
+                        if [ ! -f "$ENV_DIR/$PLAN_FILE" ]; then
+                            echo "ERROR: Saved plan not found: $ENV_DIR/$PLAN_FILE"
+                            echo "APPLY will not automatically run plan."
+                            exit 1
+                        fi
+
+                        terraform -chdir="$ENV_DIR" apply "$PLAN_FILE"
+                        echo "Apply completed using the existing saved plan."
+                    '''
+                }
             }
         }
 
-
         // =====================================================
-        // DESTROY
-        //
-        // Destroy will eventually affect ONLY the selected
-        // environment. Bootstrap/state infrastructure must not
-        // be destroyed by this lifecycle action.
+        // DESTROY - intentional action only
         // =====================================================
-
         stage('Environment Destroy') {
-
-            when {
-                expression {
-                    params.ACTION == 'destroy'
-                }
-            }
-
+            when { expression { params.ACTION == 'destroy' } }
             steps {
-                echo """
-                ========================================
-                Terraform Environment Destroy
-                ========================================
+                withCredentials([
+                    string(credentialsId: 'azure-terraform-client-id', variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-terraform-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                    string(credentialsId: 'azure-terraform-tenant-id', variable: 'ARM_TENANT_ID'),
+                    string(credentialsId: 'azure-terraform-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                ]) {
+                    sh '''
+                        set +x
+                        set -e
+                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
+                        VAR_FILE="${DEPLOYMENT_ENVIRONMENT}.generated.tfvars"
 
-                ACTION=destroy selected.
-                Environment: ${params.ENVIRONMENT}
+                        echo "========================================"
+                        echo "Terraform Environment Destroy"
+                        echo "========================================"
+                        echo "ACTION=destroy selected intentionally."
+                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
 
-                Destroy is intentionally disabled at this
-                checkpoint.
+                        test -d "$ENV_DIR"
+                        test -f "$ENV_DIR/$VAR_FILE"
 
-                Future destroy operations will target only:
+                        if [ ! -d "$ENV_DIR/.terraform" ]; then
+                            echo "ERROR: Environment Terraform is not initialized."
+                            echo "DESTROY will not automatically run initialize."
+                            exit 1
+                        fi
 
-                    ${params.ENVIRONMENT}
+                        terraform -chdir="$ENV_DIR" destroy \
+                          -var-file="$VAR_FILE" \
+                          -auto-approve
 
-                Bootstrap/state infrastructure will NOT be
-                destroyed by this action.
-                """
+                        echo "Destroy completed for ${DEPLOYMENT_ENVIRONMENT} only."
+                        echo "Bootstrap/state infrastructure was not targeted."
+                    '''
+                }
             }
         }
     }
 
 
     // =========================================================
-    // Post Actions
+    // Post Actions - preserve Terraform state and action artifacts
     // =========================================================
-
     post {
-
         always {
-
             sh '''
                 echo "========================================"
-                echo "Cleaning generated Terraform files..."
+                echo "Terraform Persistence Policy"
                 echo "========================================"
-
-                # -------------------------------------------------
-                # Environment generated tfvars
-                # -------------------------------------------------
-
-                find environments \
-                  -type f \
-                  -name "*.generated.tfvars" \
-                  -delete || true
-
-                # -------------------------------------------------
-                # Environment Terraform working directories
-                # -------------------------------------------------
-
-                find environments \
-                  -type d \
-                  -name ".terraform" \
-                  -prune \
-                  -exec rm -rf {} + || true
-
-                # -------------------------------------------------
-                # Bootstrap generated tfvars
-                # -------------------------------------------------
-
-                rm -f \
-                  bootstrap/bootstrap.generated.tfvars || true
-
-                # -------------------------------------------------
-                # Bootstrap plan
-                # -------------------------------------------------
-
-                rm -f \
-                  bootstrap/bootstrap.tfplan || true
-
-                # -------------------------------------------------
-                # Bootstrap Terraform working directory
-                # -------------------------------------------------
-
-                rm -rf \
-                  bootstrap/.terraform || true
-
-                echo ""
-                echo "Terraform cleanup completed."
+                echo "State files are never deleted."
+                echo ".terraform directories are never deleted."
+                echo "Saved *.tfplan files are never deleted automatically."
+                echo "Generated tfvars are preserved so a later intentional action can reuse them."
+                echo "Terraform persistence policy completed."
             '''
         }
 
