@@ -563,8 +563,13 @@ pipeline {
                         echo "Validating environment Terraform configuration..."
 
                         terraform \
-                          -chdir="$ENV_DIR" \
-                          validate
+                            -chdir="$ENV_DIR" \
+                            init \
+                            -backend-config="resource_group_name=rg-wave-lab-tfstate-shared" \
+                            -backend-config="storage_account_name=stwavelabtf7wuoxx" \
+                            -backend-config="container_name=tfstate" \
+                            -backend-config="key=${DEPLOYMENT_ENVIRONMENT}.terraform.tfstate" \
+                            -backend-config="use_azuread_auth=true"
 
                         echo ""
                         echo "Environment Terraform initialization completed."
