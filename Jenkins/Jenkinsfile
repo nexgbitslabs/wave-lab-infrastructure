@@ -540,39 +540,35 @@ pipeline {
                         echo "NO terraform destroy was executed."
                         echo "========================================"
 
-                                                echo ""
-                        echo "========================================"
-                        echo "Initialize Environment Terraform"
-                        echo "========================================"
-
-                        ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
-
-                        echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
-                        echo "Directory:   ${ENV_DIR}"
-
-                        test -d "$ENV_DIR"
-
                         echo ""
-                        echo "Initializing environment Terraform..."
+                            echo "========================================"
+                            echo "Initialize Environment Terraform"
+                            echo "========================================"
 
-                        terraform \
-                            -chdir="$ENV_DIR" \
-                            init
+                            ENV_DIR="environments/${DEPLOYMENT_ENVIRONMENT}"
 
-                        echo ""
-                        echo "Validating environment Terraform configuration..."
+                            echo "Environment: ${DEPLOYMENT_ENVIRONMENT}"
+                            echo "Directory:   ${ENV_DIR}"
 
-                        terraform \
+                            test -d "$ENV_DIR"
+
+                            echo ""
+                            echo "Initializing environment Terraform..."
+
+                            terraform \
                             -chdir="$ENV_DIR" \
                             init \
-                            -backend-config="resource_group_name=rg-wave-lab-tfstate-shared" \
-                            -backend-config="storage_account_name=stwavelabtf7wuoxx" \
-                            -backend-config="container_name=tfstate" \
-                            -backend-config="key=${DEPLOYMENT_ENVIRONMENT}.terraform.tfstate" \
-                            -backend-config="use_azuread_auth=true"
+                            -reconfigure
 
-                        echo ""
-                        echo "Environment Terraform initialization completed."
+                            echo ""
+                            echo "Validating environment Terraform configuration..."
+
+                            terraform \
+                            -chdir="$ENV_DIR" \
+                            validate
+
+                            echo ""
+                            echo "Environment Terraform initialization completed."
                     '''
                 }
             }
