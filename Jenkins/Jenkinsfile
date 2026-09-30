@@ -514,13 +514,10 @@ pipeline {
                         echo ""
                         echo "Initializing bootstrap Terraform configuration..."
 
-                        if [ -d "bootstrap/.terraform" ]; then
-                            echo "Bootstrap Terraform is already initialized. Skipping terraform init."
-                        else
-                            terraform \
-                              -chdir=bootstrap \
-                              init
-                        fi
+                        terraform \
+                        -chdir=bootstrap \
+                        init
+
 
                         echo ""
                         echo "Validating bootstrap Terraform configuration..."
