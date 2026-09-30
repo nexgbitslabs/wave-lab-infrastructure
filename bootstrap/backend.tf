@@ -1,13 +1,9 @@
-# ============================================================
-# Terraform Bootstrap Backend
-# ============================================================
-#
-# The bootstrap configuration creates the Azure resources
-# required for remote Terraform state.
-#
-# Therefore bootstrap itself initially uses local state.
-# ============================================================
-
 terraform {
-  backend "azurerm" {}
+  backend "azurerm" {
+    resource_group_name  = "rg-wave-lab-tfstate-shared"
+    storage_account_name = "stwavelabtff8ce57"
+    container_name       = "tfstate"
+    key                  = "bootstrap.terraform.tfstate"
+    use_azuread_auth     = true
+  }
 }
