@@ -145,10 +145,24 @@ pipeline {
                     env.KEY_VAULT_SKU =
                         props.KEY_VAULT_SKU
 
+                    // -------------------------------------------------
+                    // Flux / GitOps
+                    // -------------------------------------------------
+
+                    env.FLUX_GIT_REPOSITORY_URL =
+                        props.FLUX_GIT_REPOSITORY_URL
+
+                    env.FLUX_GIT_BRANCH =
+                        props.FLUX_GIT_BRANCH
+
+                    env.FLUX_GIT_PATH =
+                        props.FLUX_GIT_PATH
+
                     echo "Environment loaded: ${env.DEPLOYMENT_ENVIRONMENT}"
                     echo "Azure location:     ${env.AZURE_LOCATION}"
                     echo "Project:            ${env.PROJECT_NAME}"
                     echo "Terraform action:   ${params.ACTION}"
+
                 }
             }
         }

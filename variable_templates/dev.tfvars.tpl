@@ -66,6 +66,6 @@ tags = {
 # Flux / GitOps
 # ============================================================
 
-#flux_git_repository_url = "${FLUX_GIT_REPOSITORY_URL}"
-#flux_git_branch         = "${FLUX_GIT_BRANCH}"
-#flux_git_path           = "${FLUX_GIT_PATH}"
+flux_git_repository_url = "${FLUX_GIT_REPOSITORY_URL}"
+flux_git_branch         = "${FLUX_GIT_BRANCH}"
+flux_git_path           = "${FLUX_GIT_PATH}"

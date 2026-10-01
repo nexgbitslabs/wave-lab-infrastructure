@@ -134,21 +134,21 @@ module "aks_acr_pull" {
   principal_type       = "ServicePrincipal"
 }
 
-# # ============================================================
-# # Flux v2 / GitOps
-# # ============================================================
+# ============================================================
+# Flux v2 / GitOps
+# ============================================================
 
-# module "flux" {
-#   source = "../../modules/flux"
+module "flux" {
+  source = "../../modules/flux"
 
-#   cluster_id = module.aks.id
+  cluster_id = module.aks.id
 
-#   extension_name     = "flux"
-#   configuration_name = "${var.project_name}-${var.environment}-gitops"
+  extension_name     = "flux"
+  configuration_name = "${var.project_name}-${var.environment}-gitops"
 
-#   namespace = "flux-system"
+  namespace = "flux-system"
 
-#   git_repository_url = var.flux_git_repository_url
-#   git_branch         = var.flux_git_branch
-#   git_path           = var.flux_git_path
-# }
+  git_repository_url = var.flux_git_repository_url
+  git_branch         = var.flux_git_branch
+  git_path           = var.flux_git_path
+}
